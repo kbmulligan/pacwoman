@@ -1,0 +1,315 @@
+<html>
+<head>
+  <title>pacwoman</title>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" type="text/css" href="index.css">
+</head>
+<body>
+  <div class="outer">
+    <div class="square">
+      <canvas id="canvas" class="fill"></canvas>
+    </div>
+  </div>
+</body>
+
+<!-- <script src="minPQ.js"></script> -->
+<script src="getMap.js"></script>
+<script src="unit.js"></script>
+<!-- <script src="flowfield.js"></script> -->
+
+<script>
+var body = document.getElementById('body');
+var canvas = document.getElementById('canvas');
+var ctx = canvas.getContext('2d')
+var keys = {};
+var done = false;
+var gameState = "PAUSED";               // one of "PAUSED" or "RUNNING"
+var sayKeys = false;
+var inputMode = "NORMAL";               // one of "NORMAL" or "ATTACK"
+var gameTime = 0;
+
+const GAME_SPEED = 1;
+
+const showGrid = true;
+
+const KEY_SPACE = 32;                // pause
+const KEY_LEFT = 37;                 // 
+const KEY_RIGHT = 39;                // 
+const KEY_UP = 38;                   //
+const KEY_DOWN = 40;                 //
+
+const KEY_SHIFT = 16;                // 
+const KEY_TILDE = 192;               // 
+const KEY_A = 65;                    // 
+const KEY_S = 83;                    // 
+const KEY_H = 72;                    //
+
+ 
+const W = 460;                       // canvas width
+const S = map.length;                // number of grid squares
+const B = W/S;                       // derived width of each grid square in pixels
+canvas.width = W;
+canvas.height = W;
+
+const DARK_GRAY = "#333";
+const LIGHT_GRAY = "#BBB";
+const BLACK = "#000";
+const YELLOW = "#FF0";
+const RED = "#F00";
+
+
+// GLOBALS //////////////////////////////////////////////////////////
+let world = {map: map};
+let player = { name: "Player 1" };
+let computer = { name: "Computer" };
+let ghosts = [];
+let chars = [];
+
+
+// PACWOMAN
+let pac = new Unit(230, 350, player, YELLOW);
+chars.push(pac);
+
+let blinky = new Unit(190, 210, computer, "red");
+chars.push(blinky);
+let pinky = new Unit(210, 210, computer, "pink");
+chars.push(pinky);
+let inky = new Unit(250, 210, computer, "cyan");
+chars.push(inky);
+let clyde = new Unit(270, 210, computer, "orange");
+chars.push(clyde);
+
+
+world.player = pac;
+
+
+// UTILITY FUNCTIONS /////////////////////////////////////////////////
+
+// HIGH LEVEL DRAW FUNCTIONS /////////////////////////////////////////
+function draw() {
+  drawMap(ctx);  
+  drawChars(ctx, chars);
+}
+
+// draw list of chars with given canvas context
+function drawChars (ctx, chars) {
+    for (let c of chars) {
+        c.draw(ctx);
+    }
+}
+
+function drawMap (ctx) {
+
+  ctx.fillStyle = BLACK;
+  ctx.fillRect(0, 0, W, W);
+  ctx.strokeStyle = LIGHT_GRAY;
+
+  for (let i = 0; i < S; i ++) {
+    for (let j = 0; j < S; j ++) {
+      let color = getColor(map[i][j]);
+      ctx.fillStyle = color;
+      ctx.fillRect(j*B, i*B, B, B);
+    
+      if (showGrid) {
+          ctx.strokeRect(j*B, i*B, B, B);
+      }
+    }
+  }
+
+  // draw border when paused
+  if (gameState == "PAUSED") {
+     ctx.strokeStyle = "ORANGE";
+     ctx.beginPath();
+     ctx.rect(0, 0, W, W);
+     let temp = ctx.lineWidth;
+     ctx.lineWidth = 15;
+     ctx.stroke();
+     ctx.lineWidth = temp;
+  }
+
+}
+
+
+// ASSET UPDATES ////////////////////////////////////////////////////
+function update(world) {
+    behaviorChars(world, chars);
+    updateChars(world, chars);    
+}
+
+// update list of chars with given world state
+function updateChars (world, chars) {
+    for (let c of chars) {
+        c.update(world);
+    }
+}
+
+// update behavior for list of chars with given world state
+function behaviorChars (world, chars) {
+    for (let c of chars) {
+        if (c.owner.name != "Player 1") {
+            c.changeBehavior(world);
+            c.executeBehavior(world);
+        }
+    }
+}
+
+
+
+// MAIN GAME LOOP ///////////////////////////////////////////////////
+function tick(t) {
+  if (gameState == "RUNNING") {
+      gameTime += GAME_SPEED;
+      update(world);
+  }   
+
+  draw();
+  if (!done) requestAnimationFrame(tick);
+}
+
+// START HERE ///////////////////////////////////////////////////////
+// Everything begins here then goes into main game loop 
+
+console.log("MAP: ", mapName);
+console.log("GAMESTATE: ", gameState);
+showGameState();
+
+requestAnimationFrame(tick);
+
+/////////////////////////////////////////////////////////////////////
+
+
+
+// issues move order to given units by setting their targets to x, y
+function moveUnits (units, x, y) {
+
+    // get movement flowfield to prep for pathfinding (generate once)
+    let j = Math.floor(x / B);
+    let i = Math.floor(y / B);
+    let field = getField(i, j);
+    
+    for (let unit of units) {
+        unit.field = field;
+        unit.setMoveTarget({x, y});
+        console.log("MOVE CMD ISSUED: ", unit.name, x, y);
+    }
+
+}
+
+
+ 
+function togglePause() {
+    if (gameState == "PAUSED") {
+        gameState = "RUNNING";
+        console.log("GAME RUNNING...");
+    } else { 
+        gameState = "PAUSED";
+        console.log("GAME PAUSED...");
+    }
+}
+
+// INPUT OUTPUT /////////////////////////////////////////////////////
+canvas.onmousedown = function(e) {
+  keys[e.button] = true;
+  if (e.button == 0) {
+    let x = Math.round(getCanvasPosition(e.offsetX));
+    let y = Math.round(getCanvasPosition(e.offsetY));
+  }
+
+}
+
+canvas.onmousemove = function(e) {
+  if (keys[0]) {
+    let x = Math.round(getCanvasPosition(e.offsetX));
+    let y = Math.round(getCanvasPosition(e.offsetY));
+  }
+
+}
+
+canvas.onmouseup = function(e) {
+  keys[e.button] = false;
+
+  if (e.button) {
+      let x = Math.round(getCanvasPosition(e.offsetX));
+      let y = Math.round(getCanvasPosition(e.offsetY));
+  }
+}
+
+canvas.oncontextmenu = function(e) {
+  e.preventDefault();
+  let x = Math.round(getCanvasPosition(e.offsetX));
+  let y = Math.round(getCanvasPosition(e.offsetY));
+
+}
+
+function getCanvasPosition(clientPos) {
+  let ratio = canvas.width / canvas.clientWidth;
+  return Math.round(clientPos * ratio);
+}
+
+window.onresize = function(e) {
+  canvas.width = W;
+  canvas.height = W;
+}
+
+// KEYBOARD IO //////////////////////////////////////////////////////
+window.onkeydown = function (e) {
+  keys[e.keyCode] = true;
+
+  if (sayKeys) {
+      console.log("Key down:", e.keyCode);
+  }
+
+  if (keys[KEY_LEFT]) {
+      pac.moveLeft();
+  }
+  if (keys[KEY_RIGHT]) {
+      pac.moveRight();
+  }
+  if (keys[KEY_UP]) {
+      pac.moveUp();
+  }
+  if (keys[KEY_DOWN]) {
+      pac.moveDown();
+  }
+
+  if (keys[KEY_TILDE]) {                           
+      ;
+  }
+  if (keys[KEY_SPACE]) {
+      togglePause();
+  }
+  if (keys[KEY_A]) {
+      ;
+  }
+  if (keys[KEY_S]) {
+      ;
+  }
+  if (keys[KEY_H]) {
+      ;
+  }
+
+}
+
+window.onkeyup = function (e) {
+  keys[e.keyCode] = false;
+  if (sayKeys) {
+    console.log("Key up:", e.keyCode);
+  }
+}
+
+// GAME STATE ///////////////////////////////////////////////////////
+function showGameState () {
+    let gameStateInfo = "GAME STATE INFO";
+    let mapInfo = mapName;
+
+    console.log("--- GAME STATE ---");
+    console.log(mapInfo);
+
+    return gameStateInfo; 
+}
+
+
+
+
+</script>
+</html>
