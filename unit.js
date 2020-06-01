@@ -31,7 +31,7 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
 
   this.maxMouthAngle = 0.10;
   this.mouthAngle = this.maxMouthAngle;
-  this.mouthAngleInc = 0.01;
+  this.mouthAngleInc = 0.008;
   this.mouthOpening = false;
   this.animateMouth = true;
 
@@ -250,14 +250,12 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
 
       if (this.gx > goal.x) {
           this.moveLeft(w);
-      }
-      if (this.gx < goal.x) {
+      } else if (this.gx < goal.x) {
           this.moveRight(w); 
       }
       if (this.gy > goal.y) {
           this.moveUp(w); 
-      }
-      if (this.gy < goal.y) {
+      } else if (this.gy < goal.y) {
           this.moveDown(w); 
       }
 
@@ -285,7 +283,7 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
           let by = newGridCoords.y;
 
           if (map[by][bx] == 'X') {
-              console.log("FOUND DOT");
+              //console.log("FOUND DOT");
               map[by][bx] = BLANK; 
           }
       }

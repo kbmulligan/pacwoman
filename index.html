@@ -61,6 +61,8 @@ const DOT_RADIUS = 3;
 const START_CIRCLE = 0;
 const FULL_CIRCLE = 2 * Math.PI;
 
+// convert map 
+map = makeDots(map);
 
 // GLOBALS //////////////////////////////////////////////////////////
 let world = {map: map};
@@ -83,6 +85,7 @@ let inky = new Unit(250, 210, computer, "cyan");
 chars.push(inky);
 let clyde = new Unit(270, 210, computer, "orange");
 chars.push(clyde);
+
 
 
 world.player = pac;
