@@ -57,6 +57,10 @@ const BLACK = "#000";
 const YELLOW = "#FF0";
 const RED = "#F00";
 
+const DOT_RADIUS = 3;
+const START_CIRCLE = 0;
+const FULL_CIRCLE = 2 * Math.PI;
+
 
 // GLOBALS //////////////////////////////////////////////////////////
 let world = {map: map};
@@ -68,6 +72,7 @@ let chars = [];
 
 // PACWOMAN
 let pac = new Unit(230, 350, player, YELLOW);
+pac.type = "PACWOMAN";
 chars.push(pac);
 
 let blinky = new Unit(190, 210, computer, "red");
@@ -84,6 +89,21 @@ world.player = pac;
 
 
 // UTILITY FUNCTIONS /////////////////////////////////////////////////
+function toGrid (x, y) {
+    ;
+}
+
+function toXY (gridx, gridy) {
+    let nx = gridx * B;
+    let ny = gridy * B;
+    return {x: nx, y: ny};
+}
+
+function toXYCentered (gridx, gridy) {
+    let nx = gridx * B + 0.5 * B;
+    let ny = gridy * B + 0.5 * B;
+    return {x: nx, y: ny};
+}
 
 // HIGH LEVEL DRAW FUNCTIONS /////////////////////////////////////////
 function draw() {
@@ -113,6 +133,11 @@ function drawMap (ctx) {
       if (showGrid) {
           ctx.strokeRect(j*B, i*B, B, B);
       }
+
+      // draw dot if still there
+      if (map[i][j] == DOT) {
+          drawDot(ctx, i, j);
+      } 
     }
   }
 
@@ -127,6 +152,17 @@ function drawMap (ctx) {
      ctx.lineWidth = temp;
   }
 
+}
+
+function drawDot (ctx, i, j) {
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    let c = toXYCentered(j, i);
+    let x = c.x;
+    let y = c.y;
+    ctx.arc(x, y, DOT_RADIUS, START_CIRCLE, FULL_CIRCLE);
+    ctx.lineTo(x, y);
+    ctx.fill();
 }
 
 

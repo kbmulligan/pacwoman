@@ -1,4 +1,4 @@
-// unit.js - everything regarding units, projectiles, and similar
+// unit.js - everything regarding units
 
 const TAU = 2 * Math.PI;
 const DEFAULT_HP = 50;
@@ -23,19 +23,19 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
   this.r = r;
   this.vx = 0;
   this.vy = 0;
-  this.maxv = 3;
+  this.maxv = 2;
   this.target = null;
-  this.targetAttack = null;
   this.color = color;
-  //this.field = getField(Math.floor(this.y/B), Math.floor(this.x/B));
   this.direction = 2 * 0.0 * Math.PI;
   this.facing = this.direction;
+
   this.maxMouthAngle = 0.10;
   this.mouthAngle = this.maxMouthAngle;
   this.mouthAngleInc = 0.01;
   this.mouthOpening = false;
-  this.visible = true;
   this.animateMouth = true;
+
+  this.visible = true;
 
   this.type = "GHOST";  // either GHOST or PACWOMAN
 
@@ -119,24 +119,6 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
     ctx.arc(this.x, this.y, this.r, startAngle, finishAngle);
     ctx.lineTo(this.x, this.y);
     ctx.fill();
-    if (this.selected) {
-      ctx.strokeStyle = "yellow";
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.r, 0, TAU);
-      let temp = ctx.lineWidth;
-      ctx.lineWidth = 4
-      ctx.stroke();
-      ctx.lineWidth = temp;
-    }
-    if (this.state == "ATTACKING") {
-      ctx.strokeStyle = "red";
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.r, 0, TAU);
-      let temp = ctx.lineWidth;
-      ctx.lineWidth = 6
-      ctx.stroke();
-      ctx.lineWidth = temp;
-    }
     if (this.state == "DEAD") {
       ctx.strokeStyle = "BLACK";
       ctx.beginPath();
@@ -210,11 +192,18 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
         this.x += this.vx;
         this.y += this.vy;
 
-        // keep within map
-        this.bound(world); 
 
         // keep from crossing walls
-        this.collision(world);
+        this.wallCollision(world);
+
+        // detect dots
+        this.dotCollision(world);
+
+        // detect ghosts
+        this.ghostCollision(world);
+
+        // keep within map
+        this.bound(world); 
 
         if (this.animateMouth) {
             if (this.mouthOpening) {
@@ -278,17 +267,40 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
   // employ currently selected behavior 
   this.executeBehavior = function (w) {
       if (this.nextBehavior) {
-          console.log("EXECUTING BEHAVIOR: ", this.name, this.nextBehavior);
+          //console.log("EXECUTING BEHAVIOR: ", this.name, this.nextBehavior);
           this.nextBehavior(w);
       } 
   }
+  
+  // if you run into ghost, then you die
+  this.ghostCollision = function (w) {
+      ;
+  }
+
+  // eat dots if you run into them, but not if GHOST type
+  this.dotCollision = function (w) {
+      if (this.type == "PACWOMAN") {
+          let newGridCoords = getGridCoords(this.x, this.y);
+          let bx = newGridCoords.x;
+          let by = newGridCoords.y;
+
+          if (map[by][bx] == 'X') {
+              console.log("FOUND DOT");
+              map[by][bx] = BLANK; 
+          }
+      }
+  }
 
   // prevent object from colliding into any units in the world
-  this.collision = function (w) {
+  this.wallCollision = function (w) {
       
       // get new grid coords
-      let bx = Math.floor(this.x / B); 
-      let by = Math.floor(this.y / B); 
+      // let bx = Math.floor(this.x / B); 
+      // let by = Math.floor(this.y / B); 
+
+      let gridCoords = getGridCoords(this.x, this.y);
+      let bx = gridCoords.x;
+      let by = gridCoords.y;
        
       // if moving left check for wall collision
       if (this.vx < 0) {
@@ -349,28 +361,27 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
   }
 
   // make sure coords are restricted to valid coords within world, w
+  /*
   this.bound = function (w) {
       this.x = Math.max(this.x, 0);
       this.x = Math.min(this.x, MAP_W * B);
       this.y = Math.max(this.y, 0);
       this.y = Math.min(this.y, MAP_H * B);
   }
+  */
 
   // wraps around so units can move through tunnels
   this.bound = function (w) {
 
-      if (this.x < 0) {
+      if (this.x <= 0) {
           this.x = MAP_W * B;
-      }
-      if (this.x > MAP_W * B) {
+      } else if (this.x >= MAP_W * B) {
           this.x = 0;
       }
 
-      if (this.y < 0) {
+      if (this.y <= 0) {
           this.y = MAP_H * B;
-      }
-
-      if (this.y > MAP_H * B) {
+      } else if (this.y >= MAP_H * B) {
           this.y = 0;
       }
       
