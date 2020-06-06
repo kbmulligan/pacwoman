@@ -27,6 +27,8 @@ var gameState = "PAUSED";               // one of "PAUSED" or "RUNNING"
 var sayKeys = false;
 var inputMode = "NORMAL";               // one of "NORMAL" or "ATTACK"
 var gameTime = 0;
+let gameLevelWon = false;
+let gameLevel = 1;
 
 const GAME_SPEED = 1;
 
@@ -50,6 +52,7 @@ const S = map.length;                // number of grid squares
 const B = W/S;                       // derived width of each grid square in pixels
 canvas.width = W;
 canvas.height = W;
+const TOLERANCE = 1;
 
 const DARK_GRAY = "#333";
 const LIGHT_GRAY = "#BBB";
@@ -57,12 +60,16 @@ const BLACK = "#000";
 const YELLOW = "#FF0";
 const RED = "#F00";
 
+const DOT_COLOR = 'white';
+const PP_COLOR = 'cyan';
+
 const DOT_RADIUS = 3;
+const PP_RADIUS = 5;
 const START_CIRCLE = 0;
 const FULL_CIRCLE = 2 * Math.PI;
 
 // convert map 
-map = makeDots(map);
+//map = makeDots(map);
 
 // GLOBALS //////////////////////////////////////////////////////////
 let world = {map: map};
@@ -71,29 +78,35 @@ let computer = { name: "Computer" };
 let ghosts = [];
 let chars = [];
 
+// GHOSTS
+let blinky = new Unit(190, 210, computer, "red");
+chars.push(blinky);
+ghosts.push(blinky);
+let pinky = new Unit(210, 210, computer, "pink");
+chars.push(pinky);
+ghosts.push(pinky);
+let inky = new Unit(250, 210, computer, "cyan");
+chars.push(inky);
+ghosts.push(inky);
+let clyde = new Unit(270, 210, computer, "orange");
+chars.push(clyde);
+ghosts.push(clyde);
 
 // PACWOMAN
 let pac = new Unit(230, 350, player, YELLOW);
 pac.type = "PACWOMAN";
+pac.enemies = ghosts;
 chars.push(pac);
 
-let blinky = new Unit(190, 210, computer, "red");
-chars.push(blinky);
-let pinky = new Unit(210, 210, computer, "pink");
-chars.push(pinky);
-let inky = new Unit(250, 210, computer, "cyan");
-chars.push(inky);
-let clyde = new Unit(270, 210, computer, "orange");
-chars.push(clyde);
-
-
-
 world.player = pac;
+world.ghosts = ghosts;
 
 
 // UTILITY FUNCTIONS /////////////////////////////////////////////////
 function toGrid (x, y) {
-    ;
+    let gx = x / B;
+    let gy = y / B;
+    return {x: gx, y: gy};
 }
 
 function toXY (gridx, gridy) {
@@ -108,9 +121,25 @@ function toXYCentered (gridx, gridy) {
     return {x: nx, y: ny};
 }
 
+// given a raw x,y and a grid x,y - return true if that x,y is in the
+//     center of the grid x,y within a tolerance
+function isCentered (x, y, gx, gy, tol=TOLERANCE) {
+    let isInCenter = false;
+
+    let raw = toXYCentered(gx, gy);
+    //console.log("toXYCentered: ", raw.x, raw.y);
+
+    let dx = raw.x - x;
+    let dy = raw.y - y;
+
+    isInCenter = Math.abs(dx) < TOLERANCE && Math.abs(dy) < TOLERANCE;
+
+    return isInCenter;
+}
+
 // HIGH LEVEL DRAW FUNCTIONS /////////////////////////////////////////
 function draw() {
-  drawMap(ctx);  
+  drawMap(ctx, world);  
   drawChars(ctx, chars);
 }
 
@@ -121,7 +150,7 @@ function drawChars (ctx, chars) {
     }
 }
 
-function drawMap (ctx) {
+function drawMap (ctx, w) {
 
   ctx.fillStyle = BLACK;
   ctx.fillRect(0, 0, W, W);
@@ -129,7 +158,7 @@ function drawMap (ctx) {
 
   for (let i = 0; i < S; i ++) {
     for (let j = 0; j < S; j ++) {
-      let color = getColor(map[i][j]);
+      let color = getColor(w.map[i][j]);
       ctx.fillStyle = color;
       ctx.fillRect(j*B, i*B, B, B);
     
@@ -138,9 +167,13 @@ function drawMap (ctx) {
       }
 
       // draw dot if still there
-      if (map[i][j] == DOT) {
+      if (w.map[i][j] == DOT) {
           drawDot(ctx, i, j);
       } 
+      if (w.map[i][j] == PP) {
+          drawPowerPellet(ctx, i, j);
+      } 
+      
     }
   }
 
@@ -158,7 +191,7 @@ function drawMap (ctx) {
 }
 
 function drawDot (ctx, i, j) {
-    ctx.fillStyle = "white";
+    ctx.fillStyle = DOT_COLOR;
     ctx.beginPath();
     let c = toXYCentered(j, i);
     let x = c.x;
@@ -168,11 +201,31 @@ function drawDot (ctx, i, j) {
     ctx.fill();
 }
 
+function drawPowerPellet (ctx, i, j) {
+    ctx.fillStyle = PP_COLOR;
+    ctx.beginPath();
+    let c = toXYCentered(j, i);
+    let x = c.x;
+    let y = c.y;
+    ctx.arc(x, y, PP_RADIUS, START_CIRCLE, FULL_CIRCLE);
+    ctx.lineTo(x, y);
+    ctx.fill();
+}
 
 // ASSET UPDATES ////////////////////////////////////////////////////
 function update(world) {
     behaviorChars(world, chars);
     updateChars(world, chars);    
+
+    //console.log("PAC: ", pac.x, pac.y);
+    //console.log("GRID: ", pac.gx, pac.gy);
+    //console.log("CENTERED: ", isCentered(pac.x, pac.y, pac.gx, pac.gy));
+
+    console.log("DOTS: ", getDots(world.map));
+
+    if ( !worldHasDots(world) ) {
+        win();
+    } 
 }
 
 // update list of chars with given world state
@@ -193,16 +246,43 @@ function behaviorChars (world, chars) {
 }
 
 
+// check for world to have any dots
+function worldHasDots (w) {
+    return getDots(w.map) > 0;
+}
+
+// do what happens when pacwoman wins
+function win () {
+    gameLevelWon = true;
+    levelUp(1);
+}
+
+function levelUp (inc) {
+    gameLevel += inc;
+    reloadLevel(gameLevel);
+    pause();
+}
+
+function reloadLevel (level) {
+    gameLevelWon = false;
+    world.map = makeDots(maps[level]);
+}
+
 
 // MAIN GAME LOOP ///////////////////////////////////////////////////
 function tick(t) {
+
   if (gameState == "RUNNING") {
       gameTime += GAME_SPEED;
       update(world);
   }   
 
   draw();
-  if (!done) requestAnimationFrame(tick);
+
+  if (!done) {
+      requestAnimationFrame(tick);
+  }
+
 }
 
 // START HERE ///////////////////////////////////////////////////////
@@ -211,6 +291,16 @@ function tick(t) {
 console.log("MAP: ", mapName);
 console.log("GAMESTATE: ", gameState);
 showGameState();
+
+/*
+console.log("TEST");
+console.log("MAP:  ", map[0][0]);
+console.log("MAP:  ", above(map, 0, 0));
+console.log("MAP:  ", above(map, 0, 1));
+*/
+
+
+
 
 requestAnimationFrame(tick);
 
@@ -238,12 +328,20 @@ function moveUnits (units, x, y) {
  
 function togglePause() {
     if (gameState == "PAUSED") {
-        gameState = "RUNNING";
-        console.log("GAME RUNNING...");
+        unPause();
     } else { 
-        gameState = "PAUSED";
-        console.log("GAME PAUSED...");
+        pause();
     }
+}
+
+function pause() {
+    gameState = "PAUSED";
+    console.log("GAME PAUSED...");
+}
+
+function unPause() {
+    gameState = "RUNNING";
+    console.log("GAME RUNNING...");
 }
 
 // INPUT OUTPUT /////////////////////////////////////////////////////
@@ -299,16 +397,16 @@ window.onkeydown = function (e) {
   }
 
   if (keys[KEY_LEFT]) {
-      pac.moveLeft();
+      pac.moveLeft(world);
   }
   if (keys[KEY_RIGHT]) {
-      pac.moveRight();
+      pac.moveRight(world);
   }
   if (keys[KEY_UP]) {
-      pac.moveUp();
+      pac.moveUp(world);
   }
   if (keys[KEY_DOWN]) {
-      pac.moveDown();
+      pac.moveDown(world);
   }
 
   if (keys[KEY_TILDE]) {                           

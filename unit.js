@@ -9,6 +9,12 @@ const DEFAULT_SIZE = 10;
 const THRESHOLD_CLOSE = 0.5;
 
 const COLLISION_BUFFER = 0;
+const VULNERABLE_TIME = 300;
+
+const DIR_LEFT = Math.PI;
+const DIR_RIGHT = 0;
+const DIR_UP = 2 * 0.75 * Math.PI;
+const DIR_DOWN = 2 * 0.25 * Math.PI;
 
 function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
 
@@ -44,7 +50,13 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
   this.hp = DEFAULT_HP;
   this.attack = DEFAULT_ATTACK;
 
-  this.state = "INACTIVE";    // one of INACTIVE, ALERT, MOVING, ATTACKING, DEAD
+  this.state = "INACTIVE";    // one of INACTIVE, ALERT, MOVING, VULNERABLE, DEAD
+
+  this.score = 0;
+
+  this.enemies = [];
+
+  this.commandQ = [];
  
   // AI portion
   this.interval = 10;
@@ -111,64 +123,153 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
 
   this.draw = function(ctx) {
     if (this.visible) {
-    
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    let startAngle = this.direction + this.mouthAngle * TAU;
-    let finishAngle = this.direction + TAU - this.mouthAngle * TAU;
-    ctx.arc(this.x, this.y, this.r, startAngle, finishAngle);
-    ctx.lineTo(this.x, this.y);
-    ctx.fill();
-    if (this.state == "DEAD") {
-      ctx.strokeStyle = "BLACK";
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.r, 0, TAU);
-      let temp = ctx.lineWidth;
-      ctx.lineWidth = 6
-      ctx.stroke();
-      ctx.lineWidth = temp;
-    }
+        
+        ctx.fillStyle = this.color;
+        ctx.strokeStyle = this.color;
+        
+        if (this.state == "VULNERABLE") {
+            ctx.fillStyle = "blue";
+        }
+            
+        ctx.beginPath();
+        let startAngle = this.direction + this.mouthAngle * TAU;
+        let finishAngle = this.direction + TAU - this.mouthAngle * TAU;
+        ctx.arc(this.x, this.y, this.r, startAngle, finishAngle);
+        ctx.lineTo(this.x, this.y);
+        //ctx.lineTo(Math.cos(this.startAngle) * this.r, Math.sin(this.startAngle) * this.r);
+        //ctx.stroke();
+        ctx.fill();
+       
+
+        if (this.state == "DEAD") {
+          ctx.strokeStyle = "BLACK";
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.r, 0, TAU);
+          let temp = ctx.lineWidth;
+          ctx.lineWidth = 6
+          ctx.stroke();
+          ctx.lineWidth = temp;
+        }
     } 
   }
 
-  this.getFieldVector = function(i, j) {
-    let vec = {x:0, y:0};
-    if (mapContains(i,j)){
-      if (map[i][j] == 0) {
-        vec = this.field[i][j].v;
+  // returns true if unit has any left/right movement
+  this.movingLeftRight = function () {
+      return Math.abs(this.vx) > 0;
+  }
+
+  // returns true if unit has any up/down movement
+  this.movingUpDown = function () {
+      return Math.abs(this.vy) > 0;
+  }
+
+
+  // movement and its rules
+
+  // given a world, attempt to make the char move left
+  // returns true on success, false if stored
+  this.moveLeft = function (w, sub=null) {
+      let success = false;
+      if ( (this.direction == DIR_RIGHT 
+            || isCentered(this.x, this.y, this.gx, this.gy))
+            && toLeftOf(w.map, this.gx, this.gy) != WALL) { 
+          this.direction = DIR_LEFT;
+          this.vx = -this.maxv;
+          this.vy = 0;
+          this.success = true;
       } else {
-        vec = {
-          x: this.x - (B*j + B/2),
-          y: this.y - (B*i + B/2)
-        }
+          this.storeCommand("LEFT");
       }
-    }
-    return vec;
+      return success;
   }
 
-  this.moveLeft = function (w) {
-      this.direction = 2 * 0.5 * Math.PI;
-      this.vx = -this.maxv;
-      this.vy = 0;
+  // given a world, attempt to make the char move right
+  // returns true on success, false if stored
+  this.moveRight = function (w, sub=null) {
+      let success = false;
+      if ( (this.direction == DIR_LEFT 
+            || isCentered(this.x, this.y, this.gx, this.gy))  
+            && toRightOf(w.map, this.gx, this.gy) != WALL) { 
+          this.direction = DIR_RIGHT;
+          this.vx = this.maxv;
+          this.vy = 0;
+          this.success = true;
+      } else {
+          this.storeCommand("RIGHT");
+      }
+      return success;
   }
 
-  this.moveRight = function (w) {
-      this.direction = 2 * 0.0 * Math.PI;
-      this.vx = this.maxv;
-      this.vy = 0;
+  // given a world, attempt to make the char move up
+  // returns true on success, false if stored
+  this.moveUp = function (w, sub=null) {
+      let success = false;
+      if ( (this.direction == DIR_DOWN  
+            || isCentered(this.x, this.y, this.gx, this.gy)) 
+            && above(w.map, this.gx, this.gy) != WALL) { 
+          this.direction = DIR_UP;
+          this.vx = 0;
+          this.vy = -this.maxv;
+      } else {
+          this.storeCommand("UP");
+      }
+      return success;
   }
 
-  this.moveUp = function (w) {
-      this.direction = 2 * 0.75 * Math.PI;
-      this.vx = 0;
-      this.vy = -this.maxv;
+  // given a world, attempt to make the char move down 
+  // returns true on success, false if stored
+  this.moveDown = function (w, sub=null) {
+      let success = false;
+      if ( (this.direction == DIR_UP
+            || isCentered(this.x, this.y, this.gx, this.gy))
+            && below(w.map, this.gx, this.gy) != WALL) { 
+          this.direction = DIR_DOWN;
+          this.vx = 0;
+          this.vy = this.maxv;
+      } else {
+          this.storeCommand("DOWN");
+      }
+      return success;
   }
 
-  this.moveDown = function (w) {
-      this.direction = 2 * 0.25 * Math.PI;
-      this.vx = 0;
-      this.vy = this.maxv;
+  // if this char has a stored command, returns true
+  this.hasCommand = function () {
+      return this.commandQ.length > 0;
   }
+
+  // stores a command (function) in the queue for this char
+  this.storeCommand = function (cmd) {
+      if (this.type == "PACWOMAN") {
+          this.commandQ.push(cmd);
+      }
+      if (this.commandQ.length > 0) {
+          this.commandQ = this.commandQ.slice(-1);
+      }
+  }
+
+  // executes the next command in the queue for this char
+  this.executeCommand = function (w) {
+      let cmd = this.commandQ.pop();
+      
+      if (cmd == "LEFT") {
+           this.moveLeft(w);
+      }
+      if (cmd == "RIGHT") {
+           this.moveRight(w);
+      }
+      if (cmd == "UP") {
+           this.moveUp(w);
+      }
+      if (cmd == "DOWN") {
+           this.moveDown(w);
+      }
+      
+      if (this.commandQ.length > 0) {
+          this.commandQ = [];
+          console.log("Command queue too long, truncating...");
+      }
+  }
+
 
   this.update = function (world) {
 
@@ -188,16 +289,19 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
 
     } else {
         // DO ONLY IF UNIT IS ALIVE
+
+        if (this.hasCommand() && isCentered(this.x, this.y, this.gx, this.gy)) {
+            this.executeCommand(world);
+        }
         
         this.x += this.vx;
         this.y += this.vy;
 
-
         // keep from crossing walls
         this.wallCollision(world);
 
-        // detect dots
-        this.dotCollision(world);
+        // detect dots, power pellets, and other power ups / bonuses
+        this.resourceCollision(world);
 
         // detect ghosts
         this.ghostCollision(world);
@@ -220,6 +324,13 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
                 }
             }
         }
+
+
+        if (this.stateTimer > 0) {
+            this.stateTimer -= 1;
+        } else {
+            this.state = "MOVING";
+        } 
     }
 
   }
@@ -270,32 +381,76 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
       } 
   }
   
+  // power pellet bonuses
+  this.eatPowerPellet = function (w) {
+      console.log("FOUND POWER PELLET");
+      this.enemies.forEach( x => x.activateVulnerable());
+  }
+
+  // dot bonuses
+  this.eatDot = function (w) {
+      console.log("FOUND DOT");
+      this.score += 1;
+      console.log("SCORE: ", this.score);
+  }
+
   // if you run into ghost, then you die
   this.ghostCollision = function (w) {
       ;
   }
 
+  // ghost turn vulnerable
+  this.activateVulnerable = function () {
+     this.state = "VULNERABLE";
+     this.stateTimer = VULNERABLE_TIME;
+  }
+
   // eat dots if you run into them, but not if GHOST type
-  this.dotCollision = function (w) {
+  this.resourceCollision = function (w) {
       if (this.type == "PACWOMAN") {
           let newGridCoords = getGridCoords(this.x, this.y);
           let bx = newGridCoords.x;
           let by = newGridCoords.y;
 
-          if (map[by][bx] == 'X') {
+          if (w.map[by][bx] == DOT) {
               //console.log("FOUND DOT");
-              map[by][bx] = BLANK; 
+              this.eatDot(w);
+              w.map[by][bx] = BLANK; 
+          }
+          if (w.map[by][bx] == PP) {
+              this.eatPowerPellet(w);
+              w.map[by][bx] = BLANK; 
           }
       }
+  }
+
+  // return list of valid directions this char can move
+  this.validDirections = function (w) {
+      const LEFT = "LEFT";
+      const RIGHT = "RIGHT";
+      const UP = "UP";
+      const DOWN = "DOWN";
+
+      let clearSpaces = [];
+      
+      // get current grid coords
+      let gridCoords = getGridCoords(this.x, this.y);
+      let bx = gridCoords.x;
+      let by = gridCoords.y;
+
+      // if going left / right
+      if (this.vx != 0) {
+          
+
+      }
+       
+      return clearSpaces;
   }
 
   // prevent object from colliding into any units in the world
   this.wallCollision = function (w) {
       
-      // get new grid coords
-      // let bx = Math.floor(this.x / B); 
-      // let by = Math.floor(this.y / B); 
-
+      // get current grid coords
       let gridCoords = getGridCoords(this.x, this.y);
       let bx = gridCoords.x;
       let by = gridCoords.y;
@@ -358,15 +513,6 @@ function Unit(x, y, owner, color, r=DEFAULT_SIZE) {
       return;
   }
 
-  // make sure coords are restricted to valid coords within world, w
-  /*
-  this.bound = function (w) {
-      this.x = Math.max(this.x, 0);
-      this.x = Math.min(this.x, MAP_W * B);
-      this.y = Math.max(this.y, 0);
-      this.y = Math.min(this.y, MAP_H * B);
-  }
-  */
 
   // wraps around so units can move through tunnels
   this.bound = function (w) {
